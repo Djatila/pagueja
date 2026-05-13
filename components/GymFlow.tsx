@@ -96,6 +96,7 @@ interface Comprovante {
   chave: string;
   conf: number;
   motivo: string;
+  imagem: string | null;
 }
 
 const PLANOS = ["Mensal", "Mensal Plus", "Trimestral", "Semestral", "Anual"];
@@ -923,7 +924,7 @@ function Comprovantes({ session, showToast }: { session: any; showToast: any }) 
                   {atual.imagem ? (
                     <div style={{ position: "relative", width: "100%", aspectRatio: "3/4", borderRadius: 10, overflow: "hidden", background: "#000" }}>
                       <img src={atual.imagem} alt="Comprovante PIX" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                      <button onClick={() => window.open(atual.imagem, '_blank')} style={{ position: "absolute", bottom: 12, right: 12, display: "flex", alignItems: "center", gap: 6, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", padding: "6px 12px", borderRadius: 20, fontSize: 11, cursor: "pointer" }}>
+                      <button onClick={() => window.open(atual.imagem || undefined, '_blank')} style={{ position: "absolute", bottom: 12, right: 12, display: "flex", alignItems: "center", gap: 6, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", padding: "6px 12px", borderRadius: 20, fontSize: 11, cursor: "pointer" }}>
                         <ExtLinkIcon size={11} /> Ampliar
                       </button>
                     </div>
