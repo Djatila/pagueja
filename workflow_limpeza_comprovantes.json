@@ -1,0 +1,157 @@
+{
+  "name": "Limpeza de Comprovantes Antigos (15 Dias)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "18f9b97b-9442-491b-8524-cc34f0c8a6f3",
+      "name": "Todo Dia às 3AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "mensalidades_pix",
+        "returnAll": true,
+        "filterType": "string",
+        "filterString": "updated_at=lt.{{ $today.minus(15, 'days').toISO() }}&comprovante_url=not.is.null"
+      },
+      "id": "e6f47df4-3990-410a-b605-2d33458e0a13",
+      "name": "1 - Buscar Comprovantes > 15 dias",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ $json.comprovante_url.replace('/object/public/', '/object/') }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "764b85c1-38e9-4e2b-bbd4-6330095a5fbc",
+      "name": "2 - Deletar Imagem (Supabase Storage)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        440,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "mensalidades_pix",
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('1 - Buscar Comprovantes > 15 dias').item.json.id }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "comprovante_url",
+              "fieldValue": ""
+            }
+          ]
+        }
+      },
+      "id": "319cd757-0b5c-4da6-9b50-3814de01e1dc",
+      "name": "3 - Limpar URL no Banco",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        660,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Todo Dia às 3AM": {
+      "main": [
+        [
+          {
+            "node": "1 - Buscar Comprovantes > 15 dias",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1 - Buscar Comprovantes > 15 dias": {
+      "main": [
+        [
+          {
+            "node": "2 - Deletar Imagem (Supabase Storage)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2 - Deletar Imagem (Supabase Storage)": {
+      "main": [
+        [
+          {
+            "node": "3 - Limpar URL no Banco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

@@ -1,0 +1,475 @@
+{
+  "name": "Régua de Cobrança Diária — Academias PIX [COMPATIBLE]",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "value": 8
+            }
+          ]
+        }
+      },
+      "id": "cron-id",
+      "name": "01 · Cron 08h Diário",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -1216,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://haanrxmaihqawzdrgsgj.supabase.co/rest/v1/configuracoes_pix",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_anon_key_supabase_aqui"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer sua_anon_key_supabase_aqui"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "chave_pix"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "supa-pix-http",
+      "name": "03 · Supabase: Get Chave PIX",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -896,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://haanrxmaihqawzdrgsgj.supabase.co/rest/v1/mensalidades_pix",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_anon_key_supabase_aqui"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer sua_anon_key_supabase_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status_pagamento",
+              "value": "pendente"
+            },
+            {
+              "name": "select",
+              "value": "*,alunos_pix(nome,clientPhone)"
+            }
+          ]
+        }
+      },
+      "id": "supa-alunos-http",
+      "name": "02 · Supabase: Get Mensalidades + Alunos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -560,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Motor de Cálculo da Régua de Cobrança\nconst today = new Date();\ntoday.setHours(0,0,0,0);\nconst results = [];\n\nlet chavePixFinal = \"NÃO CONFIGURADA\";\ntry {\n  const pixData = $node[\"03 · Supabase: Get Chave PIX\"].json;\n  if (Array.isArray(pixData) && pixData.length > 0) {\n    chavePixFinal = pixData[0].chave_pix;\n  } else if (pixData && pixData.chave_pix) {\n    chavePixFinal = pixData.chave_pix;\n  }\n} catch (e) {}\n\nfor (const item of items) {\n  const m = item.json;\n  const dataVencStr = m.data_vencimento || m.vencimento;\n  if (!dataVencStr) continue;\n\n  const vencDate = new Date(dataVencStr + 'T12:00:00');\n  vencDate.setHours(0,0,0,0);\n\n  const diffTime = vencDate.getTime() - today.getTime();\n  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));\n\n  let status = \"ignorar\";\n  if (diffDays === 5) status = \"D-5\";\n  else if (diffDays === 3) status = \"D-3\";\n  else if (diffDays === 1) status = \"D-1\";\n  else if (diffDays === 0) status = \"D-0\";\n  else if (diffDays < 0) status = \"Atrasado\";\n\n  if (status !== \"ignorar\") {\n    let telefoneBruto = m.alunos_pix?.clientPhone || m.telefone || \"\";\n    telefoneBruto = telefoneBruto.replace(/\\D/g, '');\n    if (telefoneBruto.length > 0 && !telefoneBruto.startsWith('55')) {\n      telefoneBruto = '55' + telefoneBruto;\n    }\n    \n    results.push({\n      json: {\n        ...m,\n        diffDays,\n        status_regua: status,\n        chave_pix: chavePixFinal,\n        telefone_limpo: telefoneBruto,\n        nome_aluno: m.alunos_pix?.nome || \"Aluno\"\n      }\n    });\n  }\n}\nreturn results;"
+      },
+      "id": "code-motor",
+      "name": "04 · Motor de Cálculo da Régua",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $input.item.json.status_regua !== 'ignorar' }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-node",
+      "name": "04b · Tem Alunos na Régua Hoje?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "value1": "={{ $json.status_regua }}",
+        "rules": {
+          "values": [
+            {
+              "value2": "D-5"
+            },
+            {
+              "output": 1,
+              "value2": "D-3"
+            },
+            {
+              "output": 2,
+              "value2": "D-1"
+            },
+            {
+              "output": 3,
+              "value2": "D-0"
+            },
+            {
+              "output": 4,
+              "value2": "Atrasado"
+            }
+          ]
+        }
+      },
+      "id": "switch-node",
+      "name": "05 · Switch: Roteador da Régua",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        224,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evo.bambinos.online/message/sendText/AutoCobranca",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_apikey_evolution_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefone_limpo }}"
+            },
+            {
+              "name": "text",
+              "value": "Oi {{ $json.nome_aluno }}! Passando para lembrar que sua mensalidade de R$ {{ $json.valor }} vence em 5 dias. 🚀"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-d5",
+      "name": "06A · WhatsApp D-5",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        512,
+        2464
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evo.bambinos.online/message/sendText/AutoCobranca",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_apikey_evolution_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefone_limpo }}"
+            },
+            {
+              "name": "text",
+              "value": "Oi {{ $json.nome_aluno }}! Faltam 3 dias para o vencimento da sua mensalidade. 🔑 Chave PIX: {{ $json.chave_pix }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-d3",
+      "name": "06B · WhatsApp D-3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        512,
+        2592
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evo.bambinos.online/message/sendText/AutoCobranca",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_apikey_evolution_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefone_limpo }}"
+            },
+            {
+              "name": "text",
+              "value": "Amanhã vence sua mensalidade, {{ $json.nome_aluno }}! Não esqueça de realizar o pagamento. 🔑 Chave PIX: {{ $json.chave_pix }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-d1",
+      "name": "06C · WhatsApp D-1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        512,
+        2720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evo.bambinos.online/message/sendText/AutoCobranca",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_apikey_evolution_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefone_limpo }}"
+            },
+            {
+              "name": "text",
+              "value": "Hoje é o dia! 🚀 Realize o pagamento de R$ {{ $json.valor }} para evitar interrupções. 🔑 Chave PIX: {{ $json.chave_pix }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-d0",
+      "name": "06D · WhatsApp D-0",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        512,
+        2848
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://evo.bambinos.online/message/sendText/AutoCobranca",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_apikey_evolution_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.telefone_limpo }}"
+            },
+            {
+              "name": "text",
+              "value": "Sua mensalidade está atrasada! Regularize agora para garantir seu acesso. 🔑 Chave PIX: {{ $json.chave_pix }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-atrasado",
+      "name": "06E · WhatsApp Atrasado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        512,
+        2976
+      ]
+    }
+  ],
+  "connections": {
+    "01 · Cron 08h Diário": {
+      "main": [
+        [
+          {
+            "node": "03 · Supabase: Get Chave PIX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 · Supabase: Get Chave PIX": {
+      "main": [
+        [
+          {
+            "node": "02 · Supabase: Get Mensalidades + Alunos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 · Supabase: Get Mensalidades + Alunos": {
+      "main": [
+        [
+          {
+            "node": "04 · Motor de Cálculo da Régua",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 · Motor de Cálculo da Régua": {
+      "main": [
+        [
+          {
+            "node": "04b · Tem Alunos na Régua Hoje?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04b · Tem Alunos na Régua Hoje?": {
+      "main": [
+        [
+          {
+            "node": "05 · Switch: Roteador da Régua",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 · Switch: Roteador da Régua": {
+      "main": [
+        [
+          {
+            "node": "06A · WhatsApp D-5",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "06B · WhatsApp D-3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "06C · WhatsApp D-1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "06D · WhatsApp D-0",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "06E · WhatsApp Atrasado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

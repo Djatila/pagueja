@@ -1,0 +1,83 @@
+{
+  "name": "Pague Já — Disparo de Avisos Manuais",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pague-ja-avisos",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Receber Disparo Pague Já",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst telefones = body.telefones || [];\nconst msg = body.mensagem || '';\n\nif (telefones.length === 0) return [];\n\nreturn telefones.map(t => ({\n  json: { telefone: t, mensagem: msg }\n}));"
+      },
+      "id": "2",
+      "name": "Preparar Disparos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendText",
+        "number": "={{ $json.telefone }}",
+        "textMessage": "={{ $json.mensagem }}"
+      },
+      "id": "3",
+      "name": "WhatsApp: Enviar Aviso",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        650,
+        300
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "Rnng4l5g0o6okWVd",
+          "name": "Evolution account 2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receber Disparo Pague Já": {
+      "main": [
+        [
+          {
+            "node": "Preparar Disparos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Disparos": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp: Enviar Aviso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

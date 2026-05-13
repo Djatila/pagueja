@@ -1,0 +1,824 @@
+{
+  "updatedAt": "2026-05-12T16:58:25.355Z",
+  "createdAt": "2026-05-06T13:49:21.766Z",
+  "id": "XYuBDhrnXUpAzTyz",
+  "name": "PIX Academias — OCR + Baixa Automática (Principal Atualizado)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pix-academias",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ea600c96-bb18-4c84-a700-b329c9b065a3",
+      "name": "01 · Gatilho Evolution API1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -496
+      ],
+      "webhookId": "4a2404a3-6794-4be4-8fb4-e3a3d5c736ef",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f949cf17-c9c7-490b-9065-047a248dbd8c",
+      "name": "01b · Responder 200 OK1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        480,
+        -656
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.body.data.messageType }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "imageMessage"
+            },
+            {
+              "value2": "documentMessage"
+            },
+            {
+              "value2": "ignoreMessage"
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "id": "42417307-ca9a-4fe1-9706-04498d60a204",
+      "name": "02 · Filtro: Tem Anexo?1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        480,
+        -496
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "c489ac3c-a6df-4722-999e-b7e9d73ec5b7",
+      "name": "02b · Ignorar (sem mídia)1",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -336
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "clientPhone",
+              "value": "={{ ($json.body.data.key.remoteJidAlt || $json.body.data.key.remoteJid).split('@')[0] }}"
+            },
+            {
+              "name": "imageBase64",
+              "value": "={{ $json.body.data.message.base64 ? $json.body.data.message.base64.replace(/^data:.+;base64,/, '') : '' }}"
+            },
+            {
+              "name": "imageMimeType",
+              "value": "={{ $json.body.data.messageType === 'imageMessage' ? $json.body.data.message.imageMessage.mimetype : $json.body.data.message.documentMessage.mimetype }}"
+            },
+            {
+              "name": "messageId",
+              "value": "={{ $json.body.data.key.id }}"
+            },
+            {
+              "name": "messageType",
+              "value": "={{ $json.body.data.messageType }}"
+            }
+          ]
+        }
+      },
+      "id": "38bda2c5-f12d-45fd-913e-157a6bf3272b",
+      "name": "03 · Extrair clientPhone e Base",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer sua_chave_openrouter_aqui"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'openai/gpt-4o-mini', response_format: { type: 'json_object' }, messages: [{ role: 'system', content: 'Você é um auditor financeiro analisando comprovantes PIX brasileiros. PROIBIDO DIZER O QUE VAI FAZER. PROIBIDO USAR FRASES DE TRANSIÇÃO. Analise a imagem silenciosamente e retorne estritamente um JSON. Retorne apenas as chaves: valor_pago (numero), data_pagamento (string formato AAAA-MM-DD), id_transacao (string), status_leitura (string sucesso ou erro). Se o documento for ilegível, não for um PIX brasileiro válido ou estiver adulterado, retorne status_leitura como erro e os demais campos como null. Responda APENAS com um JSON válido.' }, { role: 'user', content: [{ type: 'text', text: 'Analise este comprovante PIX e extraia os dados solicitados.' }, { type: 'image_url', image_url: { url: `data:${$json.imageMimeType};base64,${$json.imageBase64}` } }] }] }) }}",
+        "options": {}
+      },
+      "id": "10886569-46b2-4b7d-abd6-483672572e65",
+      "name": "04 · OCR Gemini Flash1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        960,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nlet ocr;\ntry {\n  const rawText = input.choices[0].message.content;\n  ocr = JSON.parse(rawText);\n} catch (e) {\n  ocr = {\n    valor_pago: null,\n    data_pagamento: null,\n    id_transacao: null,\n    status_leitura: 'erro'\n  };\n}\n\nconst setNode = $('03 · Extrair clientPhone e Base').first().json;\n\nreturn [{\n  json: {\n    clientPhone: setNode.clientPhone,\n    imageBase64: setNode.imageBase64,\n    imageMimeType: setNode.imageMimeType,\n    messageId: setNode.messageId,\n    ocr: ocr\n  },\n  binary: {\n    \"data\": {\n      data: setNode.imageBase64,\n      mimeType: setNode.imageMimeType,\n      fileName: `comprovante_${setNode.clientPhone}_${Date.now()}.jpg`\n    }\n  }\n}];"
+      },
+      "id": "f339fb3e-bddb-4c06-bff6-5e9c8e4bdb89",
+      "name": "04b · Parse Gemini Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://haanrxmaihqawzdrgsgj.supabase.co/storage/v1/object/comprovantes/{{ $binary.data.fileName }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "sua_secret_aqui"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer sua_secret_aqui"
+            },
+            {
+              "name": "Content-Type",
+              "value": "image/jpeg"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "n8nBinaryFile",
+        "inputDataFieldName": "data"
+      },
+      "id": "supabase-upload-1778608588019",
+      "name": "04c · Supabase Upload Comprovante",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1400,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "alunos_pix",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "clientPhone",
+              "condition": "eq",
+              "keyValue": "={{ $json.clientPhone }}"
+            }
+          ]
+        }
+      },
+      "id": "3aaffd5d-94a6-4587-b2c8-ae9e0b990839",
+      "name": "05 · Supabase: Get Aluno1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        -496
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "cdEQrSAGrShHpwc3",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "operation": "notEmpty",
+                "type": "string",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
+      "id": "9d8f4113-b128-4bdb-9138-4ab2fac32802",
+      "name": "05b · Aluno Encontrado?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        -496
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "mensalidades_pix",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "aluno_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "pendente"
+            }
+          ]
+        }
+      },
+      "id": "1f329419-bbc2-4bb7-8868-86440fccb09a",
+      "name": "06 · Supabase: Get Mensalidade Pendente1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2160,
+        -528
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "operation": "notEmpty",
+                "type": "string",
+                "singleValue": true
+              }
+            }
+          ],
+          "options": {
+            "version": 2,
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          }
+        },
+        "options": {}
+      },
+      "id": "a58e87e4-f58c-4a4e-98df-a21edd2ae5d4",
+      "name": "06b · Mensalidade Encontrada?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        -528
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "mensalidades_pix",
+        "limit": 1,
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id_transacao_pix",
+              "condition": "eq",
+              "keyValue": "={{ $('04b · Parse Gemini Response1').first().json.ocr.id_transacao }}"
+            }
+          ]
+        }
+      },
+      "id": "ab9c3a92-6670-49a3-8616-b28d7ffb2c78",
+      "name": "07 · Supabase: Check Duplicidade1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        -544
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $('04b · Parse Gemini Response1').first().json.ocr.status_leitura }}",
+              "operator": {
+                "operation": "equals",
+                "type": "string"
+              },
+              "rightValue": "sucesso"
+            },
+            {
+              "id": "cond2",
+              "leftValue": "={{ $('04b · Parse Gemini Response1').first().json.ocr.valor_pago }}",
+              "operator": {
+                "operation": "equals",
+                "type": "number"
+              },
+              "rightValue": "={{ $('06 · Supabase: Get Mensalidade Pendente1').first().json.valor }}"
+            },
+            {
+              "id": "cond3",
+              "leftValue": "={{ $('07 · Supabase: Check Duplicidade1').all().length }}",
+              "operator": {
+                "operation": "equals",
+                "type": "number"
+              },
+              "rightValue": 0
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "2e7b3288-06f4-450e-9fc5-e1a9689f0959",
+      "name": "08 · Validação: Match Perfeito?1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2880,
+        -544
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "mensalidades_pix",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('06 · Supabase: Get Mensalidade Pendente1').first().json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "pago"
+            },
+            {
+              "fieldId": "id_transacao_pix",
+              "fieldValue": "={{ $('04b · Parse Gemini Response1').first().json.ocr.id_transacao }}"
+            },
+            {
+              "fieldId": "data_pagamento",
+              "fieldValue": "={{ $('04b · Parse Gemini Response1').first().json.ocr.data_pagamento }}"
+            },
+            {
+              "fieldId": "confirmado_por",
+              "fieldValue": "sistema_ai"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            },
+            {
+              "fieldId": "comprovante_url",
+              "fieldValue": "={{ 'https://haanrxmaihqawzdrgsgj.supabase.co/storage/v1/object/public/comprovantes/' + $('04b · Parse Gemini Response1').first().binary.data.fileName }}"
+            }
+          ]
+        }
+      },
+      "id": "3ffc3ce0-a227-42fc-9577-19ea87613fb6",
+      "name": "09A · Supabase: Update → PAGO1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3120,
+        -656
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "mensalidades_pix",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('06 · Supabase: Get Mensalidade Pendente1').first().json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "pendente_conferencia"
+            },
+            {
+              "fieldId": "confirmado_por",
+              "fieldValue": "aguardando_admin"
+            },
+            {
+              "fieldId": "ocr_raw_json",
+              "fieldValue": "={{ JSON.stringify($('04b · Parse Gemini Response1').first().json.ocr) }}"
+            },
+            {
+              "fieldId": "comprovante_msg_id",
+              "fieldValue": "={{ $('03 · Extrair clientPhone e Base').first().json.messageId }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ $now.toISO() }}"
+            },
+            {
+              "fieldId": "comprovante_url",
+              "fieldValue": "={{ 'https://haanrxmaihqawzdrgsgj.supabase.co/storage/v1/object/public/comprovantes/' + $('04b · Parse Gemini Response1').first().binary.data.fileName }}"
+            }
+          ]
+        }
+      },
+      "id": "698ac540-78f8-4e53-a868-63a7c57a2bd2",
+      "name": "10A · Supabase: Update → PENDENTE CONFERÊNCIA1",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3120,
+        -416
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "19m3UNk7oqdefupG",
+          "name": "Supabase account Dessa"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "C7R",
+        "remoteJid": "={{ $('03 · Extrair clientPhone e Base').first().json.clientPhone }}",
+        "messageText": "=Olá! Recebemos o seu comprovante e o pagamento foi confirmado com sucesso. Sua mensalidade está quitada. Muito obrigado!",
+        "options_message": {}
+      },
+      "id": "546641c8-ffc2-4fee-be5a-568f9864b561",
+      "name": "09B · WhatsApp: Confirmação de Pagamento1",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        -656
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "Rnng4l5g0o6okWVd",
+          "name": "Evolution account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "C7R",
+        "remoteJid": "={{ $('03 · Extrair clientPhone e Base').first().json.clientPhone }}",
+        "messageText": "=Olá! Recebemos o seu comprovante, mas notamos uma divergência (por exemplo, valor diferente do esperado) ou a leitura falhou. Já encaminhamos para a nossa equipe conferir manualmente e logo daremos o retorno. Obrigado!",
+        "options_message": {}
+      },
+      "id": "e2ada02a-812f-4888-b815-2aee8dc6e487",
+      "name": "10B · WhatsApp: Aviso Conferência Manual1",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        3360,
+        -416
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "Rnng4l5g0o6okWVd",
+          "name": "Evolution account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "C7R",
+        "remoteJid": "={{ $('03 · Extrair clientPhone e Base').first().json.clientPhone }}",
+        "messageText": "=Olá! Recebemos o seu comprovante, mas não encontramos um aluno cadastrado com este número de telefone em nossa base. Por favor, entre em contato com a secretaria.",
+        "options_message": {}
+      },
+      "id": "f01f7f4b-5a9a-49c0-93c4-37769941ef26",
+      "name": "05c · WhatsApp: Não Cadastrado1",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        2128,
+        -320
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "Rnng4l5g0o6okWVd",
+          "name": "Evolution account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "instanceName": "C7R",
+        "remoteJid": "={{ $('03 · Extrair clientPhone e Base').first().json.clientPhone }}",
+        "messageText": "=Olá! Recebemos o seu comprovante, mas não encontramos nenhuma mensalidade pendente para você no momento. Qualquer dúvida, fale conosco. Obrigado!",
+        "options_message": {}
+      },
+      "id": "97c15eef-63d3-45ac-8fdc-cf717fef2b3c",
+      "name": "06c · WhatsApp: Sem Pendência1",
+      "type": "n8n-nodes-evolution-api.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        2624,
+        -352
+      ],
+      "credentials": {
+        "evolutionApi": {
+          "id": "Rnng4l5g0o6okWVd",
+          "name": "Evolution account 2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "01 · Gatilho Evolution API1": {
+      "main": [
+        [
+          {
+            "node": "02 · Filtro: Tem Anexo?1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "01b · Responder 200 OK1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "02 · Filtro: Tem Anexo?1": {
+      "main": [
+        [
+          {
+            "node": "03 · Extrair clientPhone e Base",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "03 · Extrair clientPhone e Base",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "02b · Ignorar (sem mídia)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "03 · Extrair clientPhone e Base": {
+      "main": [
+        [
+          {
+            "node": "04 · OCR Gemini Flash1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04 · OCR Gemini Flash1": {
+      "main": [
+        [
+          {
+            "node": "04b · Parse Gemini Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04b · Parse Gemini Response1": {
+      "main": [
+        [
+          {
+            "node": "04c · Supabase Upload Comprovante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "04c · Supabase Upload Comprovante": {
+      "main": [
+        [
+          {
+            "node": "05 · Supabase: Get Aluno1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05 · Supabase: Get Aluno1": {
+      "main": [
+        [
+          {
+            "node": "05b · Aluno Encontrado?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "05b · Aluno Encontrado?1": {
+      "main": [
+        [
+          {
+            "node": "06 · Supabase: Get Mensalidade Pendente1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "05c · WhatsApp: Não Cadastrado1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06 · Supabase: Get Mensalidade Pendente1": {
+      "main": [
+        [
+          {
+            "node": "06b · Mensalidade Encontrada?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06b · Mensalidade Encontrada?1": {
+      "main": [
+        [
+          {
+            "node": "07 · Supabase: Check Duplicidade1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "06c · WhatsApp: Sem Pendência1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07 · Supabase: Check Duplicidade1": {
+      "main": [
+        [
+          {
+            "node": "08 · Validação: Match Perfeito?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "08 · Validação: Match Perfeito?1": {
+      "main": [
+        [
+          {
+            "node": "09A · Supabase: Update → PAGO1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "10A · Supabase: Update → PENDENTE CONFERÊNCIA1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "09A · Supabase: Update → PAGO1": {
+      "main": [
+        [
+          {
+            "node": "09B · WhatsApp: Confirmação de Pagamento1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10A · Supabase: Update → PENDENTE CONFERÊNCIA1": {
+      "main": [
+        [
+          {
+            "node": "10B · WhatsApp: Aviso Conferência Manual1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
